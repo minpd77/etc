@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>출처 표기 & 이미지 검색 + 인용 찾기(이미지 업로드 지원 · 제목/저자/내용 모드)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Tesseract.js (in-browser OCR) -->
+<script src="https://unpkg.com/tesseract.js@5.0.4/dist/tesseract.min.js"></script>
+<style>
+  :root{ --bg:#0f172a; --panel:#111827; --muted:#94a3b8; --accent:#22c55e; --accent2:#38bdf8; --card:#0b1220; --border:#1f2937; --text:#e5e7eb; --chip:#0f1a2f; }
+  *{box-sizing:border-box}
+  body{ margin:0; background:linear-gradient(180deg,#0b1220,#0a0f1e 60%,#0b1220); color:var(--text); font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,sans-serif;}
+  header{ padding:16px 16px 8px; border-bottom:1px solid var(--border); position:sticky; top:0; background:rgba(10,15,30,0.7); backdrop-filter: blur(10px); z-index:20;}
+  .wrap{max-width:1200px; margin:0 auto; padding:12px 16px 36px;}
+  h1{margin:0 0 6px; font-size:22px; letter-spacing:.2px}
+  .sub{color:var(--muted); font-size:13px}
+
+  /* 상단 전체 지우기 배너 */
+  .clear-banner{
+    margin:8px 0 0;
+    background:#FEF08A; /* yellow-200 */
+    color:#B91C1C;      /* red-700 */
+    border:2px solid #F59E0B; /* amber-500 */
+    border-radius:10px;
+    padding:10px 14px;
+    font-weight:800;
+    text-align:center;
+    cursor:pointer;
+    user-select:none;
+    box-shadow:0 4px 14px rgba(0,0,0,.25);
+  }
+  .clear-banner:active{ transform:scale(.99) }
+
+  .grid{ display:grid; grid-template-columns: 1fr; gap:16px; margin-top:18px; }
+  @media(min-width:1180px){ .grid{ grid-template-columns: 480px 1fr; } }
+
+  .card{ background:linear-gradient(180deg,#0f1a2f,#0b1428); border:1px solid var(--border); border-radius:14px; box-shadow:0 6px 24px rgba(0,0,0,.35);}
+  .card h2{ font-size:16px; margin:0; padding:14px 16px; border-bottom:1px solid var(--border); color:#dbeafe; display:flex; align-items:center; gap:8px;}
+  .card .body{ padding:14px 16px 16px; }
+
+  label{display:block; font-size:12px; color:#bfdbfe; margin:12px 0 6px}
+  input[type="text"], input[type="url"], input[type="date"], textarea, select{
+    width:100%; padding:10px 12px; border:1px solid #1e293b; border-radius:10px; outline:none; background:#0a1223; color:var(--text); font-size:14px;
+  }
+  textarea{min-height:110px; resize:vertical}
+  .row{display:grid; grid-template-columns:1fr; gap:10px}
+  @media(min-width:700px){ .row.two{ grid-template-columns:1fr 1fr; } .row.three{ grid-template-columns:1fr 1fr 1fr;} }
+
+  .btn{ appearance:none; border:1px solid #1e293b; background:linear-gradient(180deg,#13233f,#0f1a32); color:#e2e8f0; border-radius:10px; padding:10px 14px; font-weight:600; cursor:pointer; transition:.15s transform,.15s opacity,.15s border-color;}
+  .btn:hover{ transform: translateY(-1px); border-color:#334155 }
+  .btn.acc{ background: linear-gradient(180deg,#22c55e,#16a34a); border-color:#16a34a; color:#04100a }
+  .btn.blue{ background: linear-gradient(180deg,#38bdf8,#0ea5e9); border-color:#0ea5e9; color:#02131b }
+  .btn.ghost{ background: transparent }
+
+  .chips{display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 0}
+  .chip{ padding:6px 10px; border-radius:999px; font-size:12px; color:#cbd5e1; background:linear-gradient(180deg,#0c162a,#091224); border:1px solid #1e293b; cursor:pointer;}
+  .chip:hover{border-color:#334155}
+
+  .out{ background:#0a1223; border:1px dashed #334155; border-radius:10px; padding:10px 12px; min-height:64px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; color:#e2e8f0;}
+
+  .results{ display:grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap:10px; margin-top:10px; }
+  .thumb{ border:1px solid #1f2a44; background:#0a1223; border-radius:12px; overflow:hidden; cursor:pointer; display:flex; flex-direction:column; min-height:190px; }
+  .thumb img{ width:100%; height:140px; object-fit:cover; display:block; background:#0b1220}
+  .thumb .meta{ padding:8px 10px; font-size:12px; color:#cbd5e1}
+  .thumb .meta .t{ color:#e5e7eb; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
+
+  .bar{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  .bar .grow{ flex:1 }
+
+  .muted{ color:var(--muted); font-size:12px}
+  .small{font-size:12px; color:#cbd5e1}
+  .pill{ font-size:11px; color:#93c5fd; padding:2px 8px; border:1px solid #1e2f4a; border-radius:999px; background:#0a1a33 }
+
+  dialog{ border:none; border-radius:14px; background:#0b1428; color:#var(--text); padding:0; max-width:820px; width:calc(100% - 24px); box-shadow:0 24px 80px rgba(0,0,0,.6); }
+  dialog::backdrop{ background: rgba(0,0,0,.55) }
+  .modal-head{ padding:14px 14px 10px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center}
+  .modal-body{ padding:12px 14px 16px}
+  .imgbox{ display:flex; gap:14px; flex-wrap:wrap}
+  .imgbox img{ max-width:360px; border-radius:10px; border:1px solid #1f2a44; background:#0b1220 }
+  .kv{ font-size:13px; line-height:1.6}
+  .kv b{ color:#e2e8f0 }
+  .copybar{ display:flex; gap:8px; margin-top:12px; flex-wrap:wrap }
+  .tag{ padding:4px 8px; background:#0a1a33; border:1px solid #1e2f4a; border-radius:999px; font-size:11px; color:#93c5fd}
+  .cand{ background:#0a1223; border:1px solid #1f2a44; border-radius:12px; padding:10px; display:flex; gap:10px; align-items:flex-start }
+  .cand .meta{ font-size:13px; line-height:1.5 }
+</style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>출처 표기 & 이미지 검색 + 인용 찾기(이미지 업로드 지원 · 제목/저자/내용 모드)</h1>
+      <div class="sub">제목은 필수, 저자는 ‘-저자’로 선택, 내용은 선택 → 제목 고정으로 찾아서 정확도 높이기.</div>
+      <!-- 가장 위: 모두 지우기 노란 박스(빨간 글씨) -->
+      <div id="clearBanner" class="clear-banner" role="button" tabindex="0" aria-label="내용 모두 지우기">
+        내용 모두 지우기 — 클릭하면 모든 입력과 결과를 초기화합니다
+      </div>
+    </div>
+  </header>
+
+  <div class="wrap grid">
+    <!-- Left: Citation Builder -->
+    <section class="card" id="builderCard">
+      <h2>인용 생성기</h2>
+      <div class="body">
+        <div class="row two">
+          <div>
+            <label>자료 유형</label>
+            <select id="type">
+              <option value="book">책</option>
+              <option value="web">웹문서/기사</option>
+              <option value="video">영상(YouTube 등)</option>
+            </select>
+          </div>
+          <div>
+            <label>표기 스타일</label>
+            <select id="style">
+              <option value="kr">한국어 기본</option>
+              <option value="apa7">APA 7판</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="fields"></div>
+
+        <div class="bar" style="margin-top:10px">
+          <button class="btn acc" id="makeBtn">출처 만들기</button>
+          <button class="btn" id="copyBtn">복사</button>
+          <span class="muted">예시를 눌러 자동 채우기 ↓</span>
+        </div>
+
+        <div class="chips" id="examples"></div>
+
+        <label style="margin-top:12px">결과</label>
+        <div id="output" class="out"></div>
+      </div>
+    </section>
+
+    <!-- Right upper: Image Search (Wikimedia) -->
+    <section class="card">
+      <h2>이미지 검색 (Wikimedia Commons)</h2>
+      <div class="body">
+        <div class="bar">
+          <input id="q" type="text" placeholder="예: Elevator control panel, Martin Luther King speech" class="grow">
+          <button id="searchBtn" class="btn blue">검색</button>
+        </div>
+        <div class="muted" style="margin-top:6px">오픈 라이선스 이미지 결과를 보여줍니다. 썸네일 클릭 → 라이선스/저자 표기 복사 가능.</div>
+        <div id="res" class="results"></div>
+      </div>
+    </section>
+
+    <!-- Right middle: Quote Finder -->
+    <section class="card">
+      <h2>인용 찾기 — 문장 ▶ 출처 후보 ▶ 인용 자동 채우기</h2>
+      <div class="body">
+        <label>인용문 / 문장</label>
+        <textarea id="quoteText" placeholder="예: 에이든 토저의 저서 “하나님을 체험함”에서는… ‘우리는 기계문명의 방법론을…’"></textarea>
+
+        <div class="row two">
+          <div>
+            <label>검색 소스</label>
+            <div class="bar">
+              <label class="small"><input type="checkbox" id="srcBooks" checked> Google Books</label>
+              <label class="small"><input type="checkbox" id="srcCrossref" checked> Crossref</label>
+              <label class="small"><input type="checkbox" id="srcWikiquote" checked> Wikiquote(KO/EN)</label>
+              <label class="small"><input type="checkbox" id="srcOpenLib" checked> Open Library</label>
+              <label class="small"><input type="checkbox" id="srcIA" checked> Internet Archive</label>
+            </div>
+          </div>
+          <div>
+            <label>결과 포맷</label>
+            <select id="destStyle">
+              <option value="kr">한국어 기본 (저자, 『제목』, 역자 옮김, 출판사(연도))</option>
+              <option value="apa7">APA 7판</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="bar" style="margin-top:10px">
+          <button id="findQuoteBtn" class="btn blue">출처 찾기</button>
+          <span class="muted">결과에서 “이걸로 인용 만들기” → 왼쪽 입력폼 자동 완성</span>
+        </div>
+
+        <div id="quoteResults" style="margin-top:12px; display:grid; gap:10px;"></div>
+      </div>
+    </section>
+
+    <!-- NEW: Precision input (Title required, Author optional with dash) -->
+    <section class="card">
+      <h2>정밀 입력 — 제목(필수) / -저자(선택) / 내용(선택)</h2>
+      <div class="body">
+        <label>아래 형식으로 입력</label>
+        <textarea id="structured" placeholder="-에이든 토저
+하나님을 체험함
+우리는 기계문명의 방법론을 하나님과의 관계에까지 적용하려고 노력해왔다."></textarea>
+
+        <div class="bar" style="margin-top:10px">
+          <button id="prioritySearchBtn" class="btn blue">제목 고정으로 출처 찾기</button>
+          <span class="muted">제목은 반드시 사용, 저자는 ‘-’가 있으면 함께 사용, 내용은 있으면 가중치↑</span>
+        </div>
+
+        <div id="priorityResults" style="margin-top:12px; display:grid; gap:10px;"></div>
+      </div>
+    </section>
+
+    <!-- Right lower: Image Upload Finder -->
+    <section class="card">
+      <h2>이미지로 찾기 — 업로드 ▶ 텍스트 추출 ▶ 출처 후보</h2>
+      <div class="body">
+        <div class="row two">
+          <div>
+            <label>이미지 업로드 (jpg/png/webp)</label>
+            <input type="file" id="imgFile" accept="image/*">
+          </div>
+          <div>
+            <label>추출된 텍스트(수정 가능)</label>
+            <textarea id="imgOcrText" placeholder="이미지에서 텍스트를 추출하면 여기에 표시됩니다. 불필요한 문구를 삭제하고 ‘이미지에서 출처 찾기’를 누르세요."></textarea>
+          </div>
+        </div>
+
+        <div class="bar" style="margin-top:8px">
+          <div class="muted">미리보기</div>
+        </div>
+        <div class="bar" style="gap:14px; align-items:flex-start">
+          <img id="imgPreview" alt="" style="max-width:240px; border-radius:10px; border:1px solid #1f2a44; display:none">
+          <div class="muted small">이미지 속 텍스트(OCR)를 기반으로 책/웹 출처 후보를 찾습니다. 표지·페이지 사진·캡션 이미지에 특히 효과적입니다.</div>
+        </div>
+
+        <div class="bar" style="margin-top:10px">
+          <button id="findFromImage" class="btn blue">이미지에서 출처 찾기</button>
+          <span class="muted">또는</span>
+          <button id="openLens" class="btn">Google Lens로 열기</button>
+          <button id="openBing" class="btn">Bing 시각 검색으로 열기</button>
+        </div>
+
+        <div id="imgSearchResults" style="margin-top:12px; display:grid; gap:10px;"></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Image dialog -->
+  <dialog id="imgDlg">
+    <div class="modal-head">
+      <div style="display:flex; gap:8px; align-items:center">
+        <span class="tag">Wikimedia</span>
+        <div id="dlgTitle" style="font-weight:700"></div>
+      </div>
+      <button class="btn ghost" id="dlgClose">닫기</button>
+    </div>
+    <div class="modal-body">
+      <div class="imgbox">
+        <img id="dlgImg" alt="">
+        <div class="kv" id="dlgMeta"></div>
+      </div>
+      <div class="copybar">
+        <button class="btn" id="copyMarkdown">마크다운 표기 복사</button>
+        <button class="btn" id="copyPlain">일반 텍스트 표기 복사</button>
+        <a id="openSrc" class="btn blue" href="#" target="_blank" rel="noopener">원본 열기</a>
+      </div>
+    </div>
+  </dialog>
+
+<script>
+/* ======== 유틸 ======== */
+const $ = (s,root=document)=>root.querySelector(s);
+const $$ = (s,root=document)=>[...root.querySelectorAll(s)];
+const setHtml = (el, html)=>{ el.innerHTML = html; };
+function copyText(txt){
+  navigator.clipboard.writeText(txt).then(()=>alert("복사되었습니다."))
+  .catch(()=>{
+    const ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); alert("복사되었습니다."); } catch(e){ alert("복사 실패: "+e); }
+    ta.remove();
+  });
+}
+const sanitize = s => (s||'').replace(/\s+/g,' ').trim();
+const sanitizeHtml = s => (s||'').replace(/<[^>]+>/g,'');
+const noSpaceLower = s => (s||'').toLowerCase().replace(/\s+/g,'').trim();
+
+/* ======== 인용 생성기 - 필드 ======== */
+const FIELDS = {
+  book: [
+    {id:'author', label:'저자', ph:'예: 키에르케고르'},
+    {id:'title', label:'제목', ph:'예: 죽음에 이르는 7가지 죄'},
+    {id:'translator', label:'역자(선택)', ph:'예: 신원하'},
+    {id:'publisher', label:'출판사', ph:'예: IVP'},
+    {id:'year', label:'연도', ph:'예: 2005'},
+    {id:'city', label:'출판지(선택)', ph:'예: 서울'},
+    {id:'edition', label:'판(선택)', ph:'예: 개정판'},
+  ],
+  web: [
+    {id:'author', label:'저자/작성자(단체 가능)', ph:'예: 대한성서공회'},
+    {id:'title', label:'제목', ph:'예: 개역개정 서문'},
+    {id:'site', label:'매체/사이트명', ph:'예: bskorea.or.kr'},
+    {id:'date', label:'발행일(선택)', ph:'예: 2020-05-10'},
+    {id:'url', label:'URL', ph:'https://…'},
+    {id:'access', label:'접속일(선택)', ph:'예: 2025-08-10'},
+  ],
+  video: [
+    {id:'author', label:'업로더/채널명', ph:'예: 꿈이있는미래'},
+    {id:'title', label:'영상 제목', ph:'예: 요한복음 3장 16절 묵상'},
+    {id:'platform', label:'플랫폼', ph:'예: YouTube'},
+    {id:'date', label:'게시일(선택)', ph:'예: 2025-07-05'},
+    {id:'url', label:'URL', ph:'https://youtu.be/…'},
+  ]
+};
+function renderFields(){
+  const type = $('#type').value;
+  const fields = FIELDS[type] || [];
+  setHtml($('#fields'), fields.map(f=>`
+    <label for="${f.id}">${f.label}</label>
+    <input type="${f.id==='url'?'url':(f.id==='date'?'date':'text')}" id="${f.id}" placeholder="${f.ph||''}">
+  `).join(''));
+}
+
+/* ======== 인용 포맷 ======== */
+function krBook(v){
+  const bits=[];
+  if(v.author) bits.push(v.author.trim());
+  if(v.title) bits.push(`『${v.title.trim()}』`);
+  if(v.translator) bits.push(`${v.translator.trim()} 옮김`);
+  const pub = (v.publisher||'').trim();
+  const city = (v.city||'').trim();
+  const y = (v.year||'').trim();
+  if(pub && city && y) bits.push(`${pub}(${city}, ${y})`);
+  else if(pub && y) bits.push(`${pub}(${y})`);
+  else if(pub) bits.push(pub);
+  if(v.edition) bits.push(v.edition.trim());
+  return bits.filter(Boolean).join(', ');
+}
+function krWeb(v){
+  const bits=[];
+  if(v.author) bits.push(v.author.trim());
+  if(v.title) bits.push(`「${v.title.trim()}」`);
+  if(v.site) bits.push(v.site.trim());
+  if(v.date) bits.push(v.date.trim());
+  if(v.url) bits.push(v.url.trim());
+  if(v.access) bits.push(`(접속: ${v.access.trim()})`);
+  return bits.filter(Boolean).join(', ');
+}
+function krVideo(v){
+  const bits=[];
+  if(v.author) bits.push(v.author.trim());
+  if(v.title) bits.push(`「${v.title.trim()}」`);
+  bits.push((v.platform||'YouTube').trim());
+  if(v.date) bits.push(v.date.trim());
+  if(v.url) bits.push(v.url.trim());
+  return bits.filter(Boolean).join(', ');
+}
+function apa7Book(v){
+  const bits=[];
+  if(v.author) bits.push(`${v.author.trim()}.`);
+  if(v.year) bits.push(`(${v.year.trim()}).`);
+  if(v.title) bits.push(`${v.title.trim()}.`);
+  if(v.translator) bits.push(`${v.translator.trim()} (역).`);
+  if(v.publisher) bits.push(`${v.publisher.trim()}.`);
+  return bits.filter(Boolean).join(' ');
+}
+function apa7Web(v){
+  const bits=[];
+  if(v.author) bits.push(`${v.author.trim()}.`);
+  if(v.date) bits.push(`(${v.date.trim()}).`);
+  if(v.title) bits.push(`${v.title.trim()}.`);
+  if(v.site) bits.push(`${v.site.trim()}.`);
+  if(v.url) bits.push(v.url.trim());
+  return bits.filter(Boolean).join(' ');
+}
+function apa7Video(v){
+  const bits=[];
+  if(v.author) bits.push(`${v.author.trim()}.`);
+  if(v.date) bits.push(`(${v.date.trim()}).`);
+  if(v.title) bits.push(`${v.title.trim()} [Video].`);
+  bits.push(`${(v.platform||'YouTube')}.`);
+  if(v.url) bits.push(v.url.trim());
+  return bits.filter(Boolean).join(' ');
+}
+function makeCitation(){
+  const type=$('#type').value, style=$('#style').value;
+  const v={}; (FIELDS[type]||[]).forEach(f=> v[f.id]=$('#'+f.id)?.value||'');
+  let out='';
+  if(style==='kr'){
+    if(type==='book') out=krBook(v);
+    else if(type==='web') out=krWeb(v);
+    else if(type==='video') out=krVideo(v);
+  }else{
+    if(type==='book') out=apa7Book(v);
+    else if(type==='web') out=apa7Web(v);
+    else if(type==='video') out=apa7Video(v);
+  }
+  $('#output').textContent = out||'';
+}
+$('#type').addEventListener('change', renderFields);
+$('#style').addEventListener('change', ()=>{/* keep */});
+$('#makeBtn').addEventListener('click', makeCitation);
+$('#copyBtn').addEventListener('click', ()=> copyText($('#output').textContent||''));
+renderFields();
+
+/* ======== 예시 ======== */
+const EXAMPLES = {
+  book: [
+    {name:'한국어(책) 예시', fill:{author:'키에르케고르', title:'죽음에 이르는 7가지 죄', translator:'신원하', publisher:'IVP', year:'2005', city:'서울'}},
+    {name:'APA7(책) 예시', fill:{author:'Søren Kierkegaard', title:'The Sickness Unto Death', translator:'Alastair Hannay', publisher:'Penguin', year:'2004'}}
+  ],
+  web: [
+    {name:'웹문서(국문) 예시', fill:{author:'대한성서공회', title:'개역개정 서문', site:'bskorea.or.kr', date:'2010-01-01', url:'https://www.bskorea.or.kr', access:'2025-08-10'}},
+    {name:'기사(국문) 예시', fill:{author:'홍길동', title:'성경 본문 검색 성능 개선기', site:'교회기술저널', date:'2024-11-08', url:'https://example.org/post'}}
+  ],
+  video: [
+    {name:'YouTube(국문) 예시', fill:{author:'꿈이있는미래', title:'요한복음 3장 16절 묵상', platform:'YouTube', date:'2025-07-05', url:'https://youtu.be/xxxxxxxx'}},
+    {name:'APA7(영상) 예시', fill:{author:'Bible Study KR', title:'John 3:16 Reflection', platform:'YouTube', date:'2025-05-01', url:'https://youtu.be/yyyyyyyy'}}
+  ]
+};
+function renderExamples(){
+  const type=$('#type').value; const arr=EXAMPLES[type]||[];
+  setHtml($('#examples'), arr.map((e,i)=>`<button class="chip" data-i="${i}">${e.name}</button>`).join(''));
+  $$('#examples .chip').forEach(ch=>{
+    ch.addEventListener('click', ()=>{
+      const i=ch.getAttribute('data-i'), fill=arr[i].fill;
+      Object.entries(fill).forEach(([k,val])=>{ const el=$('#'+k); if(el) el.value=val; });
+      makeCitation();
+    });
+  });
+}
+$('#type').addEventListener('change', renderExamples);
+renderExamples();
+
+/* ======== Wikimedia Commons 이미지 검색 ======== */
+async function searchWikimedia(q){
+  const url=new URL('https://commons.wikimedia.org/w/api.php');
+  const params={action:'query',format:'json',origin:'*',generator:'search',gsrsearch:q,gsrnamespace:6,gsrlimit:24,prop:'imageinfo|info',inprop:'url',iiprop:'url|extmetadata',iiurlwidth:1024,iiurlheight:1024};
+  Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));
+  const r=await fetch(url); if(!r.ok) throw new Error('검색 실패');
+  const j=await r.json(); return j?.query?.pages ? Object.values(j.query.pages):[];
+}
+function cardFor(page){
+  const title=page.title?.replace(/^File:/,'')||'Untitled';
+  const info=(page.imageinfo||[])[0]||{}; const thumb=info.thumburl||info.url;
+  const author=(info.extmetadata?.Artist?.value||'').replace(/<[^>]+>/g,'');
+  return `<div class="thumb" data-pid="${page.pageid}">
+    <img src="${thumb||''}" alt="">
+    <div class="meta">
+      <div class="t">${title}</div>
+      <div class="muted">${author||('저자 미상')}</div>
+    </div>
+  </div>`;
+}
+$('#searchBtn').addEventListener('click', doSearch);
+$('#q').addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(); });
+async function doSearch(){
+  const q=sanitize($('#q').value); if(!q){ alert('검색어를 입력하세요.'); return; }
+  setHtml($('#res'), '<div class="muted">검색 중…</div>');
+  try{
+    const pages=await searchWikimedia(q);
+    if(!pages.length){ setHtml($('#res'), '<div class="muted">결과가 없습니다.</div>'); return; }
+    setHtml($('#res'), pages.map(cardFor).join(''));
+    $$('#res .thumb').forEach(el=> el.addEventListener('click', ()=>openDialog(pages.find(p=>String(p.pageid)===el.getAttribute('data-pid')))));
+  }catch(err){ setHtml($('#res'), `<div class="muted">오류: ${err.message}</div>`); }
+}
+const dlg=$('#imgDlg');
+$('#dlgClose').addEventListener('click', ()=>dlg.close());
+function buildAttribution(p, mode='md'){
+  const titleRaw=p.title?.replace(/^File:/,'')||'Untitled';
+  const info=(p.imageinfo||[])[0]||{};
+  const pageUrl=p.fullurl || `https://commons.wikimedia.org/wiki/${encodeURIComponent(p.title||'')}`;
+  const imgUrl=info.url||pageUrl; const em=info.extmetadata||{};
+  const artist=sanitizeHtml(em.Artist?.value)||''; const license=sanitizeHtml(em.LicenseShortName?.value)||''; const licUrl=em.LicenseUrl?.value||pageUrl;
+  const authorStr=artist?` by ${artist}`:''; const licStr=license?(mode==='md'?` • [${license}](${licUrl})`:` • ${license} (${licUrl})`):'';
+  return mode==='md'
+    ? `[${titleRaw}](${imgUrl})${authorStr} • via [Wikimedia Commons](${pageUrl})${licStr}`
+    : `${titleRaw} — ${imgUrl}${authorStr} • via Wikimedia Commons (${pageUrl})${licStr}`;
+}
+function openDialog(p){
+  const info=(p.imageinfo||[])[0]||{};
+  $('#dlgTitle').textContent=p.title?.replace(/^File:/,'')||'Untitled';
+  $('#dlgImg').src=info.thumburl||info.url||'';
+  const em=info.extmetadata||{}; const rows=[];
+  const show=(k,v)=>rows.push(`<div><b>${k}</b><br>${v}</div>`);
+  show('Author', sanitizeHtml(em.Artist?.value)||'Unknown');
+  show('License', `${sanitizeHtml(em.LicenseShortName?.value)||'—'} ${em.LicenseUrl?.value?`<br><a href="${em.LicenseUrl.value}" target="_blank" rel="noopener">${em.LicenseUrl.value}</a>`:''}`);
+  show('Credit', sanitizeHtml(em.Credit?.value)||'Wikimedia Commons');
+  show('Source', `<a href="${p.fullurl}" target="_blank" rel="noopener">${p.fullurl}</a>`);
+  setHtml($('#dlgMeta'), rows.join('<hr style="border:none;border-top:1px solid #1e293b; margin:10px 0">'));
+  $('#openSrc').href=p.fullurl;
+  $('#copyMarkdown').onclick=()=>copyText(buildAttribution(p,'md'));
+  $('#copyPlain').onclick=()=>copyText(buildAttribution(p,'txt'));
+  dlg.showModal();
+}
+
+/* ======== 인용 찾기 (문장→후보) ======== */
+function normQuote(q){
+  return (q||'')
+    .replace(/[“”]/g,'"').replace(/[‘’]/g,"'")
+    .replace(/[.\u3002]+/g,' ')
+    .replace(/\s+/g,' ').trim();
+}
+function extractHints(q){
+  const hints=[];
+  if(/토저|에이든\s*토저|A\.?\s*W\.?\s*Tozer/i.test(q)) hints.push('에이든 토저','A. W. Tozer','Tozer');
+  return [...new Set(hints)];
+}
+/* Google Books (ko 우선, 구문+키워드+힌트) */
+async function searchGoogleBooksSmart(q){
+  const base='https://www.googleapis.com/books/v1/volumes';
+  const queries=[];
+  const clean=normQuote(q);
+  const hints=extractHints(q);
+  queries.push({q:`"${clean}"`, langRestrict:'ko', maxResults:8, printType:'books', orderBy:'relevance'});
+  const words=clean.split(' ').filter(w=>w.length>1).slice(0,12);
+  if(words.length>4){
+    const short=words.slice(0,8).join(' ');
+    queries.push({q:short, langRestrict:'ko', maxResults:8, printType:'books', orderBy:'relevance'});
+  }
+  hints.forEach(h=>{
+    queries.push({q:`${h} "${clean}"`, langRestrict:'ko', maxResults:8, printType:'books', orderBy:'relevance'});
+    queries.push({q:`${h} ${words.slice(0,6).join(' ')}`, langRestrict:'ko', maxResults:8, printType:'books', orderBy:'relevance'});
+  });
+  const run=async (p)=>{
+    const u=new URL(base); Object.entries(p).forEach(([k,v])=>u.searchParams.set(k,v));
+    const r=await fetch(u); if(!r.ok) return [];
+    const j=await r.json();
+    return (j.items||[]).map(x=>{
+      const v=x.volumeInfo||{};
+      return {
+        source:'Google Books',
+        type:'book',
+        title:v.title||'',
+        authors:(v.authors||[]).join(', '),
+        publisher:v.publisher||'',
+        year:(v.publishedDate||'').slice(0,4),
+        url:v.infoLink||x.selfLink||'',
+        note:v.description? (v.description.length>160? v.description.slice(0,160)+'…':v.description):''
+      };
+    });
+  };
+  const results=[]; for(const p of queries){ try{ results.push(...await run(p)); }catch{} }
+  const seen=new Set(); const uniq=[];
+  for(const it of results){ const key=[it.title,it.authors,it.publisher,it.year].join('|');
+    if(!seen.has(key)){ seen.add(key); uniq.push(it); } }
+  return uniq.slice(0,15);
+}
+/* Crossref */
+async function searchCrossrefSmart(q){
+  const clean=normQuote(q);
+  const hints=extractHints(q);
+  const base='https://api.crossref.org/works';
+  const queries=[clean, ...hints.map(h=>`${h} ${clean}`)];
+  const fetchOne=async (term)=>{
+    const u=new URL(base); u.searchParams.set('query.bibliographic', term); u.searchParams.set('rows','8');
+    const r=await fetch(u); if(!r.ok) return [];
+    const j=await r.json(); const items=(j.message&&j.message.items)||[];
+    return items.map(it=>{
+      const year = (it.issued && it.issued['date-parts'] && it.issued['date-parts'][0] && it.issued['date-parts'][0][0]) || '';
+      const author = (it.author||[]).map(a=>[a.given,a.family].filter(Boolean).join(' ')).join(', ');
+      const isBook = it.type && it.includes && it.includes('book') ? true : (it.type && it.type.includes('book'));
+      const isArticle = it.type && (it.type.includes('journal')||it.type.includes('article'));
+      return {
+        source:'Crossref',
+        type: isBook?'book': (isArticle?'web':'web'),
+        title:(it.title&&it.title[0])||'',
+        authors:author,
+        publisher:it['container-title']? (Array.isArray(it['container-title'])?it['container-title'][0]:it['container-title']): (it.publisher||''),
+        year:String(year),
+        url:it.URL||'',
+        note:it.DOI?`DOI: ${it.DOI}`:''
+      };
+    });
+  };
+  const results=[]; for(const term of queries){ try{ results.push(...await fetchOne(term)); }catch{} }
+  const seen=new Set(); const uniq=[];
+  for(const it of results){ const key=[it.title,it.authors,it.publisher,it.year].join('|');
+    if(!seen.has(key)){ seen.add(key); uniq.push(it); } }
+  return uniq.slice(0,15);
+}
+/* Wikiquote */
+async function searchWikiquote(q, lang='ko'){
+  const clean=normQuote(q);
+  const url=new URL(`https://${lang}.wikiquote.org/w/api.php`);
+  url.searchParams.set('action','query'); url.searchParams.set('format','json'); url.searchParams.set('origin','*');
+  url.searchParams.set('list','search'); url.searchParams.set('srlimit','6'); url.searchParams.set('srsearch', `"${clean}"`);
+  const r=await fetch(url); if(!r.ok) return [];
+  let j=await r.json(); let arr=j?.query?.search||[];
+  if(!arr.length){
+    const u2=new URL(url); u2.searchParams.set('srsearch', clean);
+    const r2=await fetch(u2); if(r2.ok){ j=await r2.json(); arr=j?.query?.search||[]; }
+  }
+  return arr.map(it=>({
+    source:`Wikiquote(${lang})`,
+    type:'web',
+    title:it.title||'',
+    authors:it.title||'',
+    publisher:`Wikiquote(${lang})`,
+    year:'',
+    url:`https://${lang}.wikiquote.org/wiki/${encodeURIComponent(it.title)}`,
+    note:'해당 인용/인물 페이지에서 문장 확인 필요'
+  }));
+}
+/* Open Library / Internet Archive (보조) */
+async function searchOpenLibrary(q){
+  const base='https://openlibrary.org/search.json'; const queries=[q];
+  const out=[]; for(const term of queries){
+    const u=new URL(base); u.searchParams.set('q', term); u.searchParams.set('limit','6');
+    const r=await fetch(u); if(!r.ok) continue;
+    const j=await r.json(); const docs=j.docs||[];
+    out.push(...docs.map(d=>({
+      source:'Open Library', type:'book', title:d.title||'', authors:(d.author_name||[]).join(', '),
+      publisher:(d.publisher||[])[0]||'', year:(d.first_publish_year||'')+'', url:d.key?`https://openlibrary.org${d.key}`:'', note:''
+    })));
+  }
+  const seen=new Set(); const uniq=[];
+  for(const it of out){ const key=[it.title,it.authors,it.publisher,it.year].join('|');
+    if(!seen.has(key)){ seen.add(key); uniq.push(it); } }
+  return uniq.slice(0,10);
+}
+async function searchInternetArchive(q){
+  const base='https://archive.org/advancedsearch.php';
+  const u=new URL(base); u.searchParams.set('q', q);
+  u.searchParams.set('fl[]','identifier,title,creator,year'); u.searchParams.set('rows','8'); u.searchParams.set('output','json');
+  const r=await fetch(u); if(!r.ok) return [];
+  const j=await r.json(); const docs=(j.response&&j.response.docs)||[];
+  return docs.map(d=>({ source:'Internet Archive', type:'book', title:d.title||'', authors:d.creator||'', publisher:'', year:(d.year||'')+'', url:d.identifier?`https://archive.org/details/${d.identifier}`:'', note:'' }));
+}
+
+/* ======== 카드/채움 ======== */
+function quoteCard(c){
+  const meta = [];
+  if(c.authors) meta.push(c.authors);
+  if(c.publisher) meta.push(c.publisher);
+  if(c.year) meta.push(c.year);
+  const subtitle = meta.filter(Boolean).join(' · ');
+  const urlHtml = c.url? `<div class="small"><a href="${c.url}" target="_blank" rel="noopener">${c.url}</a></div>`:'';
+  const noteHtml = c.note? `<div class="small">${c.note}</div>`:'';
+  return `<div class="cand">
+    <div class="pill">${c.source}</div>
+    <div class="meta" style="flex:1">
+      <div style="font-weight:700">${c.title||'(제목 미상)'}</div>
+      <div class="muted">${subtitle||''}</div>
+      ${urlHtml}
+      ${noteHtml}
+      <div class="bar" style="margin-top:8px">
+        <button class="btn" data-action="adopt" data-json='${JSON.stringify(c).replace(/'/g,"&#39;")}'>이걸로 인용 만들기</button>
+        <span class="muted">→ 왼쪽 입력폼 자동 채우기</span>
+      </div>
+    </div>
+  </div>`;
+}
+function fillBuilderFromCandidate(c){
+  if(c.type==='book'){
+    $('#type').value='book'; renderFields();
+    $('#author').value = c.authors||'';
+    $('#title').value = c.title||'';
+    $('#publisher').value = c.publisher||'';
+    $('#year').value = c.year||'';
+    $('#style').value = $('#destStyle').value;
+  }else{
+    $('#type').value='web'; renderFields();
+    $('#author').value = c.authors||'';
+    $('#title').value = c.title||'';
+    $('#site').value = c.publisher||'';
+    $('#date').value = '';
+    $('#url').value = c.url||'';
+    const today = new Date().toISOString().slice(0,10);
+    $('#access').value = today;
+    $('#style').value = $('#destStyle').value;
+  }
+  makeCitation();
+  $('#builderCard').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+/* ===== 버튼 핸들러 (문장→후보) */
+$('#findQuoteBtn').addEventListener('click', async ()=>{
+  const t = sanitize($('#quoteText').value);
+  if(!t){ alert('인용문(문장)을 입력하세요.'); return; }
+  setHtml($('#quoteResults'), '<div class="muted">검색 중…</div>');
+  const tasks=[];
+  if($('#srcBooks').checked) tasks.push(searchGoogleBooksSmart(t).catch(()=>[]));
+  if($('#srcCrossref').checked) tasks.push(searchCrossrefSmart(t).catch(()=>[]));
+  if($('#srcWikiquote').checked) tasks.push(searchWikiquote(t,'ko').catch(()=>[]), searchWikiquote(t,'en').catch(()=>[]));
+  if($('#srcOpenLib').checked) tasks.push(searchOpenLibrary(t).catch(()=>[]));
+  if($('#srcIA').checked) tasks.push(searchInternetArchive(t).catch(()=>[]));
+  try{
+    const results=(await Promise.all(tasks)).flat().filter(Boolean);
+    if(!results.length){ setHtml($('#quoteResults'), '<div class="muted">결과가 없습니다. 핵심 단어 위주로 줄여서 다시 시도해 보세요.</div>'); return; }
+    const sorted = results.sort((a,b)=> ((a.type==='book'?0:1)-(b.type==='book'?0:1)) || (a.source||'').localeCompare(b.source||'') );
+    setHtml($('#quoteResults'), sorted.map(quoteCard).join(''));
+    $('#quoteResults').onclick = (e)=>{
+      const btn = e.target.closest('button[data-action="adopt"]'); if(!btn) return;
+      const data = JSON.parse(btn.getAttribute('data-json').replace(/&#39;/g,"'"));
+      fillBuilderFromCandidate(data);
+    };
+  }catch(err){
+    setHtml($('#quoteResults'), `<div class="muted">오류: ${err.message}</div>`);
+  }
+});
+
+/* ======== 이미지 업로드 → OCR → 후보 검색 ======== */
+const imgInput = $('#imgFile');
+const imgPreview = $('#imgPreview');
+imgInput.addEventListener('change', async ()=>{
+  const f = imgInput.files && imgInput.files[0];
+  if(!f) return;
+  const url = URL.createObjectURL(f);
+  imgPreview.src = url; imgPreview.style.display='block';
+  $('#imgOcrText').value = '텍스트 추출 중… (이미지 해상도에 따라 수십 초 걸릴 수 있어요)';
+  try{
+    const { data:{ text } } = await Tesseract.recognize(url, 'kor+eng', { logger:m=>{/* console.log(m) */} });
+    const t = sanitize(text);
+    $('#imgOcrText').value = t || '(텍스트가 추출되지 않았습니다. 표지/페이지/문구가 포함된 이미지인지 확인해 주세요.)';
+  }catch(e){
+    $('#imgOcrText').value = '(OCR 실패: '+e.message+')';
+  }
+});
+
+async function runImageTextSearch(){
+  const t = sanitize($('#imgOcrText').value);
+  if(!t){ alert('추출된 텍스트가 없습니다. 수동으로 키워드를 적어도 됩니다.'); return; }
+  setHtml($('#imgSearchResults'), '<div class="muted">검색 중…</div>');
+  const tasks=[
+    searchGoogleBooksSmart(t).catch(()=>[]),
+    searchCrossrefSmart(t).catch(()=>[]),
+    searchWikiquote(t,'ko').catch(()=>[]),
+    searchWikiquote(t,'en').catch(()=>[]),
+    searchOpenLibrary(t).catch(()=>[]),
+    searchInternetArchive(t).catch(()=>[]),
+  ];
+  try{
+    const results=(await Promise.all(tasks)).flat().filter(Boolean);
+    if(!results.length){ setHtml($('#imgSearchResults'), '<div class="muted">결과가 없습니다. 추출 텍스트를 다듬어 다시 시도해 보세요.</div>'); return; }
+    const sorted = results.sort((a,b)=> ((a.type==='book'?0:1)-(b.type==='book'?0:1)) || (a.source||'').localeCompare(b.source||'') );
+    setHtml($('#imgSearchResults'), sorted.map(quoteCard).join(''));
+    $('#imgSearchResults').onclick = (e)=>{
+      const btn = e.target.closest('button[data-action="adopt"]'); if(!btn) return;
+      const data = JSON.parse(btn.getAttribute('data-json').replace(/&#39;/g,"'"));
+      fillBuilderFromCandidate(data);
+    };
+  }catch(err){
+    setHtml($('#imgSearchResults'), `<div class="muted">오류: ${err.message}</div>`);
+  }
+}
+$('#findFromImage').addEventListener('click', runImageTextSearch);
+
+/* ======== 외부 시각 검색으로 열기 ======== */
+function openWithForm(actionUrl){
+  const f = imgInput.files && imgInput.files[0];
+  if(!f){ alert('먼저 이미지를 업로드하세요.'); return; }
+  window.open(actionUrl, '_blank'); // 업로드 페이지 오픈
+}
+$('#openLens').addEventListener('click', ()=>openWithForm('https://lens.google.com/upload'));
+$('#openBing').addEventListener('click', ()=>window.open('https://www.bing.com/visualsearch', '_blank'));
+
+/* ======== NEW: 제목/저자/내용 정밀 모드 ======== */
+/* -저자 / 책이름 / 내용 형식도 인지.
+   첫 줄이 -로 시작하면 저자, 다음 줄의 비-대시 라인을 제목으로 간주. 그 외는 기존처럼 첫 줄을 제목으로. */
+function parseStructuredInput(text){
+  const lines = (text||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  let title='', author='', content='';
+  if(!lines.length) return {title, author, content};
+
+  let i = 0;
+  if(/^[-–—]\s*/.test(lines[0])){ // 첫 줄이 -저자
+    author = lines[0].replace(/^[-–—]\s*/,'').trim();
+    // 다음 비-대시 라인이 제목
+    for(i=1;i<lines.length;i++){
+      if(!/^[-–—]\s*/.test(lines[i])){ title = lines[i]; i++; break; }
+      if(!author) author = lines[i].replace(/^[-–—]\s*/,'').trim();
+    }
+  }else{
+    title = lines[0]; i=1;
+  }
+  // 남은 줄을 내용으로
+  for(; i<lines.length; i++){
+    const L = lines[i];
+    if(/^[-–—]\s*/.test(L) && !author){ author = L.replace(/^[-–—]\s*/,'').trim(); }
+    else content += (content ? ' ' : '') + L;
+  }
+  return {title, author, content};
+}
+function buildTitleFirstQueries(title, author, content){
+  const q = [];
+  const tExact = `"${title}"`;
+  const tIntitle = `intitle:"${title}"`;
+  if(author && content){
+    q.push(`${author} ${tExact} "${content}"`, `${author} ${tExact}`, `${author} ${tIntitle}`, `${author} ${title}`);
+  }else if(author){
+    q.push(`${author} ${tExact}`, `${author} ${tIntitle}`, `${author} ${title}`);
+  }
+  if(content){
+    q.push(`${tExact} "${content}"`, `${tIntitle} "${content}"`, `${title} "${content}"`);
+  }
+  q.push(tExact, tIntitle, title);
+  return [...new Set(q)];
+}
+function scoreCandidateStrict(c, wantTitle, wantAuthor, wantQuote){
+  let sc = 0;
+  const cTitleNS = noSpaceLower(c.title||'');
+  const wantTitleNS = noSpaceLower(wantTitle||'');
+  if(wantTitleNS && cTitleNS === wantTitleNS) sc += 6;
+  else if(wantTitleNS && cTitleNS.includes(wantTitleNS)) sc += 3;
+
+  if(wantAuthor){
+    const cAuthorsNS = noSpaceLower(c.authors||'');
+    const wantAuthorNS = noSpaceLower(wantAuthor);
+    if(cAuthorsNS.includes(wantAuthorNS)) sc += 4;
+  }
+  if(wantQuote){
+    const qNS = noSpaceLower(wantQuote);
+    const noteNS = noSpaceLower(c.note||'');
+    if(qNS && noteNS && noteNS.includes(qNS.slice(0, Math.min(30,qNS.length)))) sc += 1;
+  }
+  return sc;
+}
+function card(c){
+  const meta=[c.authors,c.publisher,c.year].filter(Boolean).join(' · ');
+  return `<div class="cand">
+    <span class="pill">${c.source}</span>
+    <div style="flex:1">
+      <div style="font-weight:700">${c.title||'(제목 미상)'}</div>
+      <div class="muted">${meta}</div>
+      ${c.url?`<div style="font-size:12px"><a href="${c.url}" target="_blank" rel="noopener">${c.url}</a></div>`:''}
+      ${c.note?`<div class="muted" style="font-size:12px">${c.note}</div>`:''}
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <button class="btn" data-action="adopt" data-json='${JSON.stringify(c).replace(/'/g,"&#39;")}'>이걸로 인용 만들기</button>
+      </div>
+    </div>
+  </div>`;
+}
+function adopt(c){
+  if(c.type==='book'){ $('#type').value='book'; renderFields(); $('#author').value=c.authors||''; $('#title').value=c.title||''; $('#publisher').value=c.publisher||''; $('#year').value=c.year||''; }
+  else { $('#type').value='web'; renderFields(); $('#author').value=c.authors||''; $('#title').value=c.title||''; $('#site').value=c.publisher||''; $('#url').value=c.url||''; const today=new Date().toISOString().slice(0,10); $('#access').value=today; }
+  makeCitation(); $('#builderCard').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+async function prioritySearch(){
+  const {title, author, content} = parseStructuredInput($('#structured').value);
+  if(!title){ alert('“책이름”을 반드시 입력해 주세요.'); return; }
+
+  setHtml($('#priorityResults'), '<div class="muted">검색 중…</div>');
+  const queries = buildTitleFirstQueries(title, author, content);
+
+  const results=[];
+  for(const q of queries){
+    const [gb, cr] = await Promise.all([searchGoogleBooksSmart(q).catch(()=>[]), searchCrossrefSmart(q).catch(()=>[])]);
+    results.push(...gb, ...cr);
+    if(results.length>20) break;
+  }
+  const seen=new Set(); const uniq=[];
+  for(const it of results){
+    const key=[it.title,it.authors,it.publisher,it.year].join('|');
+    if(!seen.has(key)){ seen.add(key); uniq.push(it); }
+  }
+  const scored = uniq.map(c=>({c, score:scoreCandidateStrict(c, title, author, content)}))
+                     .sort((a,b)=>b.score-a.score)
+                     .map(x=>x.c);
+  if(!scored.length){ setHtml($('#priorityResults'), '<div class="muted">결과가 없습니다. 제목 철자를 확인하거나 부제/번역본 제목도 시도해 보세요.</div>'); return; }
+  setHtml($('#priorityResults'), scored.map(card).join(''));
+  $('#priorityResults').onclick=(e)=>{ const btn=e.target.closest('button[data-action="adopt"]'); if(!btn) return; const data=JSON.parse(btn.getAttribute('data-json').replace(/&#39;/g,"'")); adopt(data); };
+}
+
+/* ======== 모두 지우기(상단 노란 박스) ======== */
+function clearAll(){
+  // 텍스트 입력/텍스트영역
+  ['q','quoteText','structured','imgOcrText'].forEach(id=>{ const el=$('#'+id); if(el) el.value=''; });
+  // 빌더 필드와 출력
+  renderFields();
+  $$('#fields input').forEach(inp=> inp.value='');
+  $('#output').textContent='';
+  // 체크박스/셀렉트 초기화
+  $('#srcBooks').checked=true; $('#srcCrossref').checked=true; $('#srcWikiquote').checked=true; $('#srcOpenLib').checked=true; $('#srcIA').checked=true;
+  $('#type').value='book'; $('#style').value='kr';
+  // 이미지 프리뷰/파일
+  const fileInput = $('#imgFile'); if(fileInput) fileInput.value='';
+  const imgPrev = $('#imgPreview'); if(imgPrev){ imgPrev.src=''; imgPrev.style.display='none'; }
+  // 결과 영역 비우기
+  ['res','quoteResults','priorityResults','imgSearchResults'].forEach(id=> setHtml($('#'+id),''));
+  // 스크롤 맨 위로
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+$('#clearBanner').addEventListener('click', clearAll);
+$('#clearBanner').addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' ') { e.preventDefault(); clearAll(); } });
+
+/* ===== 이벤트 바인딩 */
+$('#prioritySearchBtn').addEventListener('click', prioritySearch);
+</script>
+</body>
+</html>
+```0
